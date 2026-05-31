@@ -4,6 +4,20 @@ import json
 import os
 import asyncio
 from datetime import datetime, timezone, timedelta
+from flask import Flask
+from threading import Thread
+
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def health():
+    return "Bot is running!"
+
+def run_flask():
+    port = int(os.environ.get('PORT', 8080))
+    flask_app.run(host='0.0.0.0', port=port)
+
+Thread(target=run_flask).start()
 
 # === CONFIG ===
 BOT_TOKEN = "8634076261:AAGRJOTyA_LCzwCNq37OjaghGwWFHo6DfZM"  # <-- CHANGE THIS
