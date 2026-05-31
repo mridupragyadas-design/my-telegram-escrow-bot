@@ -1,0 +1,513 @@
+from telegram import Update, ChatPermissions
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+import json
+import os
+import asyncio
+from datetime import datetime, timezone, timedelta
+
+# === CONFIG ===
+BOT_TOKEN = "8634076261:AAGRJOTyA_LCzwCNq37OjaghGwWFHo6DfZM"  # <-- CHANGE THIS
+
+OWNER_ID = 2096985880
+ADMINS = [2096985880, 7352054934]
+
+STATS_FILE = "admin_stats.json"
+USER_STATS_FILE = "user_escrow_stats.json"
+
+# IST timezone
+IST = timezone(timedelta(hours=5, minutes=30))
+
+# Night mode state (no job_queue)
+night_mode = {}
+auto_off_tasks = {}
+
+
+# =========================
+# LOAD / SAVE STATS
+# =========================
+def load_stats():
+    if os.path.exists(STATS_FILE):
+        try:
+            with open(STATS_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_stats(stats):
+    with open(STATS_FILE, "w") as f:
+        json.dump(stats, f, indent=2)
+
+def load_user_stats():
+    if os.path.exists(USER_STATS_FILE):
+        try:
+            with open(USER_STATS_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_user_stats(stats):
+    with open(USER_STATS_FILE, "w") as f:
+        json.dump(stats, f, indent=2)
+
+
+admin_stats = load_stats()
+
+
+# =========================
+# ADMIN CHECK
+# =========================
+def is_admin(user_id):
+    return user_id in ADMINS or user_id == OWNER_ID
+
+
+# =========================
+# FORM HANDLER
+# =========================
+async def send_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.lower().strip()
+    if text not in ["form", "/form", "/deal", "deal"]:
+        return
+
+    form_msg = (
+        "𝙈𝙍𝙄𝙓𝘿𝙐 𝙀𝙎𝘾𝙍𝙊𝙒 𝙂𝙍𝙊𝙐𝙋🔐\n\n"
+        "𝘿𝙚𝙖𝙡 𝘿𝙚𝙩𝙖𝙞𝙡𝙨\n"
+        "• Deal Info:   \n"
+        "• Buyer:   \n"
+        "• Seller:  \n"
+        "• Amount:  \n"
+        "• Duration:  \n"
+        "• Escrow Until:  \n"
+        "• Releasee Condition: (Optional)\n\n"
+        "𝙀𝙓𝙏𝙍𝘼\n"
+        "CRYPTO ADDRESS : (Optional)\n\n"
+        "⚠️ 𝙎𝙚𝙘𝙪𝙧𝙞𝙩𝙮 𝙉𝙤𝙩𝙞𝙘𝙚\n"
+        "Admins will NEVER DM you for payment.Verify via /adminlist before proceeding."
+    )
+    await update.message.reply_text(form_msg)
+
+
+# =========================
+# ADD TRADE
+# =========================
+async def add_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⚠️ Only admins can add trades!")
+        return
+
+    reply = update.message.reply_to_message
+    if not reply:
+        await update.message.reply_text("⚠️ Reply to a form message.")
+        return
+
+    text = reply.text
+    if "Deal Info" not in text:
+        await update.message.reply_text("⚠️ Invalid form message.")
+        return
+
+    buyer = ""
+    seller = ""
+    amount = ""
+
+    for line in text.splitlines():
+        line = line.replace("•", "").strip()
+        if line.startswith("Buyer:"):
+            buyer = line.split("Buyer:")[1].strip()
+        elif line.startswith("Seller:"):
+            seller = line.split("Seller:")[1].strip()
+        elif line.startswith("Amount:"):
+            amount = line.split("Amount:")[1].strip()
+
+    if "pending_trades" not in context.chat_data:
+        context.chat_data["pending_trades"] = []
+
+    context.chat_data["pending_trades"].append({
+        "message_id": reply.message_id,
+        "buyer": buyer,
+        "seller": seller,
+        "amount": amount
+    })
+
+    msg = (
+        f"💰 𝗙𝘂𝗻𝗱𝘀 𝗔𝗱𝗱𝗲𝗱✅,𝗣𝗮𝘆𝗺𝗲𝗻𝘁 𝗥𝗲𝗰𝗲𝗶𝘃𝗲𝗱,𝗖𝗼𝗻𝘁𝗶𝗻𝘂𝗲 𝗗𝗲𝗮𝗹!\n\n"
+        f"🧑‍💼 Escrower: @{update.effective_user.username}\n"
+        f"💰 Amount: ₹{amount}\n"
+        f"👨🏻‍💼 Buyer: {buyer}\n"
+        f"🙎🏻‍♂️ Seller: {seller}\n\n"
+        f"🔐 𝗖𝗥𝗘𝗔𝗧𝗘𝗗 𝗕𝗬 @MRIXDUX"
+    )
+    await reply.reply_text(msg)
+
+
+# =========================
+# DONE TRADE
+# =========================
+async def done_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⚠️ Only admins can release trades!")
+        return
+
+    reply = update.message.reply_to_message
+    if not reply:
+        await update.message.reply_text("⚠️ Reply to trade message.")
+        return
+
+    trade_info = None
+    if "pending_trades" in context.chat_data:
+        for t in context.chat_data["pending_trades"]:
+            if t["message_id"] == reply.message_id:
+                trade_info = t
+                context.chat_data["pending_trades"].remove(t)
+                break
+
+    if not trade_info:
+        await update.message.reply_text("⚠️ Trade not found.")
+        return
+
+    # Admin stats
+    user_id = str(update.effective_user.id)
+    username = update.effective_user.username or "Unknown"
+    stats = load_stats()
+    if user_id not in stats:
+        stats[user_id] = {"count": 0, "total": 0, "username": username}
+    stats[user_id]["count"] += 1
+    try:
+        amt = float(trade_info["amount"].replace("₹", "").replace(",", ""))
+    except:
+        amt = 0
+    stats[user_id]["total"] += amt
+    save_stats(stats)
+
+    # User escrow stats
+    user_stats = load_user_stats()
+    def update_user_escrow(uname, amount_val):
+        if not uname or uname.strip() == "":
+            return
+        key = uname.lower().lstrip('@')
+        if key not in user_stats:
+            user_stats[key] = {"total_escrows": 0, "total_amount": 0, "username": uname}
+        user_stats[key]["total_escrows"] += 1
+        user_stats[key]["total_amount"] += amount_val
+
+    buyer_name = trade_info["buyer"]
+    seller_name = trade_info["seller"]
+    amount_value = amt
+    update_user_escrow(buyer_name, amount_value)
+    update_user_escrow(seller_name, amount_value)
+    save_user_stats(user_stats)
+
+    msg = (
+        "✅ 𝗙𝘂𝗻𝗱𝘀 𝗥𝗲𝗹𝗲𝗮𝘀𝗲𝗱/𝗧𝗿𝗮𝗱𝗲 𝗰𝗹𝗼𝘀𝗲𝗱!\n\n"
+        f"🧑‍💼 Released By: @{update.effective_user.username}\n"
+        f"💸 Amount: ₹{trade_info['amount']}\n"
+        f"👨🏻‍💼 Buyer: {trade_info['buyer']}\n"
+        f"🙎🏻‍♂️ Seller: {trade_info['seller']}\n\n"
+        "🔐 𝗖𝗥𝗘𝗔𝗧𝗘𝗗 𝗕𝗬 @MRIXDUX"
+    )
+    await reply.reply_text(msg)
+
+
+# =========================
+# CANCEL TRADE
+# =========================
+async def cancel_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⚠️ Only admins can cancel trades!")
+        return
+
+    reply = update.message.reply_to_message
+    if not reply:
+        await update.message.reply_text("⚠️ Reply to trade message.")
+        return
+
+    if "pending_trades" not in context.chat_data:
+        await update.message.reply_text("⚠️ No trades found.")
+        return
+
+    trade_info = None
+    for t in context.chat_data["pending_trades"]:
+        if t["message_id"] == reply.message_id:
+            trade_info = t
+            context.chat_data["pending_trades"].remove(t)
+            break
+
+    if not trade_info:
+        await update.message.reply_text("⚠️ Trade not found.")
+        return
+
+    await reply.reply_text(
+        "🔴 𝗧𝗿𝗮𝗱𝗲/𝗗𝗲𝗮𝗹 𝗖𝗮𝗻𝗰𝗲𝗹𝗹𝗲𝗱!!!!\n\n"
+        f"👮🏻‍♂️ Cancelled By: @{update.effective_user.username}\n"
+        f"👨🏻‍💼 Buyer: {trade_info['buyer']}\n"
+        f"🙎🏻‍♂️ Seller: {trade_info['seller']}\n\n"
+        "🔐 𝗖𝗥𝗘𝗔𝗧𝗘𝗗 𝗕𝗬 @MRIXDUX"
+    )
+
+
+# =========================
+# MY DEALS
+# =========================
+async def mydeals(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("⚠️ Admin only!")
+        return
+
+    stats = load_stats()
+    user_id = str(update.effective_user.id)
+    username = update.effective_user.username or "Unknown"
+
+    if user_id in stats:
+        count = stats[user_id]["count"]
+        total = stats[user_id]["total"]
+    else:
+        count = 0
+        total = 0
+
+    msg = (
+        f"📊 Your Escrow Stats @{username}\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"🧑‍💼 Total Escrows Closed: {count:03d}\n\n"
+        f"💰 INR Deals: {count:03d} | ₹{total}\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"⚙️ Powered by @mrixdufr"
+    )
+    await update.message.reply_text(msg)
+
+
+# =========================
+# USER INFO
+# =========================
+async def user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.reply_to_message:
+        await update.message.reply_text("⚠️ Reply to a user's message with /info")
+        return
+
+    target = update.message.reply_to_message.from_user
+    user_id = target.id
+    first_name = target.first_name or ""
+    last_name = target.last_name or ""
+    username = target.username or "NoUsername"
+
+    user_stats = load_user_stats()
+    key = username.lower()
+
+    if key in user_stats:
+        total_escrows = user_stats[key]["total_escrows"]
+        total_amount = user_stats[key]["total_amount"]
+        msg = (
+            f"👤 User Info:\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"🆔 ID: `{user_id}`\n"
+            f"📛 First Name: {first_name}\n"
+            f"📛 Last Name: {last_name}\n"
+            f"👤 Username: @{username}\n"
+            f"🔗 User link: [link](tg://user?id={user_id})\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"✅ Total Escrows: {total_escrows}\n"
+            f"💰 Escrow Amount: ₹{total_amount}\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"⚙️ Powered by @MRIXDUX"
+        )
+    else:
+        msg = (
+            f"👤 User Info:\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"🆔 ID: `{user_id}`\n"
+            f"📛 First Name: {first_name}\n"
+            f"📛 Last Name: {last_name}\n"
+            f"👤 Username: @{username}\n"
+            f"🔗 User link: [link](tg://user?id={user_id})\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"✅ Total Escrows: No escrow yet\n"
+            f"💰 Escrow Amount: No amount\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"⚙️ Powered by @MRIXDUX"
+        )
+    await update.message.reply_text(msg, parse_mode="Markdown", disable_web_page_preview=True)
+
+
+# =========================
+# NIGHT MODE (NO JOB_QUEUE)
+# =========================
+def seconds_until_7am_ist():
+    now = datetime.now(IST)
+    target = now.replace(hour=7, minute=0, second=0, microsecond=0)
+    if now >= target:
+        target += timedelta(days=1)
+    return (target - now).total_seconds()
+
+async def auto_disable_nightmode(chat_id, bot):
+    await asyncio.sleep(seconds_until_7am_ist())
+    if night_mode.get(chat_id, False):
+        night_mode[chat_id] = False
+        try:
+            await bot.send_message(
+                chat_id,
+                "☀️ **Auto Night Mode Disabled**\n\nIt's 7:00 AM IST. Message deletion turned off.",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+
+async def nighton(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Works only in groups.")
+        return
+
+    # Allow bot admins OR group admins
+    if not is_admin(user.id):
+        # Check if user is a Telegram group admin
+        try:
+            member = await chat.get_member(user.id)
+            if member.status not in ("administrator", "creator"):
+                await update.message.reply_text("⚠️ Only group admins or bot admins can turn on night mode!")
+                return
+        except:
+            await update.message.reply_text("⚠️ Only group admins or bot admins can turn on night mode!")
+            return
+
+    # Check bot's delete permission
+    bot_member = await chat.get_member(context.bot.id)
+    if not bot_member.can_delete_messages:
+        await update.message.reply_text(
+            "❌ **I cannot delete messages!**\n\n"
+            "Please make me an admin with **'Delete Messages'** permission.\n"
+            "After that, use /nighton again.\n\n"
+            "To check permissions, run /checkperms",
+            parse_mode="Markdown"
+        )
+        return
+
+    night_mode[chat.id] = True
+
+    # Cancel existing auto-off task if any
+    if chat.id in auto_off_tasks:
+        auto_off_tasks[chat.id].cancel()
+    task = asyncio.create_task(auto_disable_nightmode(chat.id, context.bot))
+    auto_off_tasks[chat.id] = task
+
+    await update.message.reply_text(
+        "🌙 **Night Mode Enabled**\n\n"
+        "✅ Any message from non‑admins will be **deleted immediately**.\n"
+        "Auto‑disable at 7:00 AM IST.\n"
+        "Use /nightoff to disable early.",
+        parse_mode="Markdown"
+    )
+
+async def nightoff(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("❌ Works only in groups.")
+        return
+
+    # Allow bot admins OR group admins
+    if not is_admin(user.id):
+        try:
+            member = await chat.get_member(user.id)
+            if member.status not in ("administrator", "creator"):
+                await update.message.reply_text("⚠️ Only group admins or bot admins can turn off night mode!")
+                return
+        except:
+            await update.message.reply_text("⚠️ Only group admins or bot admins can turn off night mode!")
+            return
+
+    night_mode[chat.id] = False
+
+    if chat.id in auto_off_tasks:
+        auto_off_tasks[chat.id].cancel()
+        del auto_off_tasks[chat.id]
+
+    await update.message.reply_text(
+        "☀️ **Night Mode Disabled**\n\n"
+        "Messages will no longer be deleted. Everyone can chat normally.",
+        parse_mode="Markdown"
+    )
+
+# The actual message deleter – MUST be the last handler
+async def delete_non_admin_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    user = update.effective_user
+
+    # Ignore if not a group/supergroup
+    if chat.type not in ["group", "supergroup"]:
+        return
+    # Only delete if night mode is ON for this chat
+    if not night_mode.get(chat.id, False):
+        return
+
+    # Never delete bot admins
+    if is_admin(user.id):
+        return
+
+    # Also never delete Telegram group admins
+    try:
+        member = await chat.get_member(user.id)
+        if member.status in ("administrator", "creator"):
+            return
+    except:
+        pass  # If we can't fetch, be safe and don't delete
+
+    try:
+        await update.message.delete()
+        # Optional: silently log deletion
+        # print(f"Deleted message from {user.id} in {chat.id}")
+    except Exception as e:
+        # Silently ignore errors (e.g., message already deleted)
+        pass
+
+# Debug command to check bot permissions
+async def check_perms(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("Run this in a group.")
+        return
+    bot_member = await chat.get_member(context.bot.id)
+    msg = (
+        f"🔍 **Bot Permissions in this group**\n\n"
+        f"📌 can_delete_messages: **{bot_member.can_delete_messages}**\n"
+        f"📌 can_restrict_members: **{bot_member.can_restrict_members}**\n\n"
+        f"* Night mode (message deletion) requires `can_delete_messages = True`."
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+# =========================
+# MAIN BOT
+# =========================
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    # Form triggers
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, send_form))
+    app.add_handler(CommandHandler("form", send_form))
+    app.add_handler(CommandHandler("deal", send_form))
+
+    # Escrow commands
+    app.add_handler(CommandHandler("add", add_trade))
+    app.add_handler(CommandHandler("done", done_trade))
+    app.add_handler(CommandHandler("cancel", cancel_trade))
+    app.add_handler(CommandHandler("mydeals", mydeals))
+    app.add_handler(CommandHandler("info", user_info))
+
+    # Night mode commands
+    app.add_handler(CommandHandler("nighton", nighton))
+    app.add_handler(CommandHandler("nightoff", nightoff))
+    app.add_handler(CommandHandler("checkperms", check_perms))
+
+    # CRITICAL: The delete handler must be the LAST handler added
+    app.add_handler(
+        MessageHandler(filters.ALL & ~filters.COMMAND, delete_non_admin_messages),
+        group=1
+    )
+
+    print("🚀 Bot is running...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
