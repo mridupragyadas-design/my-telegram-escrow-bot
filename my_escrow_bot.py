@@ -332,64 +332,6 @@ async def mydeals(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 # USER INFO (enhanced)
 # =========================
-async def user_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Only hardcoded bot admins can use /info (optional)
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⚠️ Admin only!")
-        return
-
-    target_user = None
-    if update.message.reply_to_message:
-        target_user = update.message.reply_to_message.from_user
-    elif context.args:
-        username = context.args[0].lstrip('@')
-        try:
-            # Try to get user from the chat by username
-            member = await update.effective_chat.get_member(username)
-            target_user = member.user
-        except:
-            pass
-
-    if not target_user:
-        await update.message.reply_text("Reply to a user's message or use /info @username.")
-        return
-
-    # Get member status (bot must be admin in group to get status)
-    try:
-        member = await update.effective_chat.get_member(target_user.id)
-        status = member.status
-        status_str = {
-            "creator": "Creator",
-            "administrator": "Administrator",
-            "member": "Member",
-            "restricted": "Restricted",
-            "left": "Left",
-            "banned": "Banned"
-        }.get(str(status).lower(), str(status))
-    except:
-        status_str = "Unknown (bot may need admin rights)"
-
-    # Load escrow stats
-    user_stats = load_user_stats()
-    key = (target_user.username or "").lower()
-    escrow_info = user_stats.get(key, {"total_escrows": 0, "total_amount": 0})
-
-    msg = (
-        f"👤 **User Info**\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"🆔 ID: `{target_user.id}`\n"
-        f"📛 First Name: {target_user.first_name or 'N/A'}\n"
-        f"📛 Last Name: {target_user.last_name or 'N/A'}\n"
-        f"👤 Username: @{target_user.username or 'N/A'}\n"
-        f"🔗 [User link](tg://user?id={target_user.id})\n"
-        f"📌 Status in group: {status_str}\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"✅ Total Escrows: {escrow_info['total_escrows']}\n"
-        f"💰 Escrow Amount: ₹{escrow_info['total_amount']}\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"⚙️ Powered by @MRIXDUX"
-    )
-    await update.message.reply_text(msg, parse_mode='Markdown', disable_web_page_preview=True)
 
 
 # =========================
