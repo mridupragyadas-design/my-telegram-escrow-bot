@@ -75,6 +75,16 @@ admin_stats = load_stats()
 def is_admin(user_id):
     return user_id in ADMINS or user_id == OWNER_ID
 
+async def is_group_admin(update: Update, user_id: int) -> bool:
+    chat = update.effective_chat
+    if chat.type not in ["group", "supergroup"]:
+        return False
+    try:
+        member = await chat.get_member(user_id)
+        return member.status in ("administrator", "creator")
+    except:
+        return False
+
 
 # =========================
 # FORM HANDLER
@@ -106,7 +116,8 @@ async def send_form(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ADD TRADE
 # =========================
 async def add_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    user_id = update.effective_user.id
+if not (is_admin(user_id) or await is_group_admin(update, user_id)):
         await update.message.reply_text("⚠️ Only admins can add trades!")
         return
 
@@ -158,7 +169,8 @@ async def add_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # DONE TRADE
 # =========================
 async def done_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    user_id = update.effective_user.id
+if not (is_admin(user_id) or await is_group_admin(update, user_id)):
         await update.message.reply_text("⚠️ Only admins can release trades!")
         return
 
@@ -226,7 +238,8 @@ async def done_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # CANCEL TRADE
 # =========================
 async def cancel_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    user_id = update.effective_user.id
+if not (is_admin(user_id) or await is_group_admin(update, user_id)):
         await update.message.reply_text("⚠️ Only admins can cancel trades!")
         return
 
