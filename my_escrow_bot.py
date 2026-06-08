@@ -1,4 +1,3 @@
-
 from telegram import Update, ChatPermissions
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 import json
@@ -25,8 +24,8 @@ Thread(target=run_flask, daemon=True).start()
 # === CONFIG ===
 BOT_TOKEN = os.environ.get('TELEGRAM_TOKEN', '8634076261:AAGRJOTyA_LCzwCNq37OjaghGwWFHo6DfZM')
 
-OWNER_ID = [2096985880, 8737155576]
-ADMINS = [2096985880, 8737155576]   # Only these user IDs can use admin commands
+OWNER_ID = [2096985880]            # only the owner (optional)
+ADMINS = [2096985880, 8737155576]  # all bot admins
 
 STATS_FILE = "admin_stats.json"
 USER_STATS_FILE = "user_escrow_stats.json"
@@ -95,7 +94,7 @@ def save_night_settings(settings):
 # ADMIN CHECK (only hardcoded)
 # =========================
 def is_admin(user_id):
-    return user_id in ADMINS or user_id == OWNER_ID
+    return user_id in ADMINS
 
 
 # =========================
