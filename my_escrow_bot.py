@@ -25,7 +25,7 @@ Thread(target=run_flask, daemon=True).start()
 # === CONFIG ===
 BOT_TOKEN = os.environ.get('TELEGRAM_TOKEN', '8634076261:AAGRJOTyA_LCzwCNq37OjaghGwWFHo6DfZM')
 
-OWNER_ID = 2096985880
+OWNER_ID = [2096985880, 8737155576]
 ADMINS = [2096985880, 8737155576]   # Only these user IDs can use admin commands
 
 STATS_FILE = "admin_stats.json"
