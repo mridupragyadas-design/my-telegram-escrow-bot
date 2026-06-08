@@ -24,8 +24,11 @@ Thread(target=run_flask, daemon=True).start()
 # === CONFIG ===
 BOT_TOKEN = os.environ.get('TELEGRAM_TOKEN', '8634076261:AAGRJOTyA_LCzwCNq37OjaghGwWFHo6DfZM')
 
-OWNER_ID = [2096985880]            # only the owner (optional)
+OWNER_ID = [2096985880]            # optional, not used in is_admin
 ADMINS = [2096985880, 8737155576]  # all bot admins
+
+def is_admin(user_id):
+    return user_id in ADMINS
 
 STATS_FILE = "admin_stats.json"
 USER_STATS_FILE = "user_escrow_stats.json"
@@ -94,8 +97,7 @@ def save_night_settings(settings):
 # ADMIN CHECK (only hardcoded)
 # =========================
 def is_admin(user_id):
-    return user_id in ADMINS
-
+    return user_id in ADMINS   # no need for OWNER_ID if you include owner in ADMINS
 
 # =========================
 # FORM HANDLER
